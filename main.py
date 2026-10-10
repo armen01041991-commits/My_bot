@@ -12,8 +12,6 @@ bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 ai_client = genai.Client(api_key=GEMINI_API_KEY)
 
-user_chats = {}
-
 SYSTEM_INSTRUCTION = (
     "Ты вежливый, умный и полезный ассистент. "
     "Отвечай четко, емко и по существу на русском языке."
@@ -21,42 +19,30 @@ SYSTEM_INSTRUCTION = (
 
 @dp.message(CommandStart())
 async def handle_start(message: types.Message):
-    user_chats[message.from_user.id] = ai_client.chats.create(
-        model="gemini-2.5-flash",
-        config=genai.types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION
-        )
-    )
     await message.answer("Здравствуйте! Я готов к работе. Задайте любой вопрос.")
-
-@dp.message(Command("clear"))
-async def handle_clear(message: types.Message):
-    user_chats.pop(message.from_user.id, None)
-    await message.answer("История диалога очищена! Можем начать заново.")
 
 @dp.message()
 async def handle_text(message: types.Message):
     if not message.text:
         return
 
-    user_id = message.from_user.id
+    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
-    if user_id not in user_chats:
-        user_chats[user_id] = ai_client.chats.create(
+    try:
+        response = ai_client.models.generate_content(
             model="gemini-2.5-flash",
+            contents=message.text,
             config=genai.types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION
             )
         )
-
-    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
-
-    try:
-        response = user_chats[user_id].send_message(message.text)
-        await message.answer(response.text)
+        if response.text:
+            await message.answer(response.text)
+        else:
+            await message.answer("Не удалось сформировать ответ.")
     except Exception as e:
         print(f"Ошибка API: {e}")
-        await message.answer("Произошла ошибка при обработке запроса.")
+        await message.answer(f"Ошибка API: {e}")
 
 async def handle_ping(request):
     return web.Response(text="Bot is running!")
